@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local SQLite databases & WAL files
+*.db
+*.sqlite
+*.sqlite3
+*-wal
+*-shm
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE / Editor folders & OS garbage
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Test & coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local exports created during testing
+*.json
+*.csv
+
+# Env files, in case config is added later
+.env
+.env.local
+
+# Packaging artifacts, if this ever gets published to PyPI
+build/
+dist/
+*.egg-info/
