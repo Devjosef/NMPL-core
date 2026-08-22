@@ -29,6 +29,8 @@ def main_with_result(args_list=None):
         "analyzer": None,
         "csv": "",
         "is_alert": False,
+        "path_status": "healthy",
+        "unresponsive_hop": None,
         "metrics": {"loss_pct": 0.0, "latency_ms": 0.0, "jitter_ms": 0.0}
     }
     
@@ -46,12 +48,19 @@ def main_with_result(args_list=None):
             analysis = analyze_path(hops)
             result["analyzer"] = analysis
             result["bottleneck"] = analysis["bottleneck"]
+            result["path_status"] = analysis.get("status", "healthy")
+            result["unresponsive_hop"] = analysis.get("unresponsive_hop")
             
             summary_lines.append("\nAnalysis:")
             summary_lines.append(f"Total Hops: {analysis['total_hops']}")
-            # Path average across all hops, including unresponsive ones (not end-to-end destination loss).
+            summary_lines.append(f"Path Status: {analysis.get('status', 'healthy')}")
             summary_lines.append(f"Total Loss (path average, not delivered-packet loss): {analysis['total_loss']:.1f}%")
             summary_lines.append(f"Average Latency: {analysis['average_latency']:.1f} ms")
+            if analysis.get("unresponsive_hop"):
+                uh = analysis["unresponsive_hop"]
+                summary_lines.append(
+                    f"Unresponsive Final Hop: Hop {uh['hop']} ({uh['host']}) with {uh['loss']:.1f}% probe non-response"
+                )
             if analysis["bottleneck"]:
                 summary_lines.append(
                     f"Bottleneck: Hop {analysis['bottleneck']['hop']} ({analysis['bottleneck']['host']}) "
@@ -62,7 +71,7 @@ def main_with_result(args_list=None):
             result["summary"] = "\n".join(summary_lines)
             result["metrics"]["loss_pct"] = analysis["total_loss"]
             result["metrics"]["latency_ms"] = analysis["average_latency"]
-            result["is_alert"] = any(hop["loss"] > 10 for hop in hops)
+            result["is_alert"] = result["path_status"] == "confirmed_persistent_loss"
             
             if args.csv:
                 with open(args.csv, "w", newline="") as f:
