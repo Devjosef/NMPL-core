@@ -2,9 +2,9 @@
 
 [![License: MIT / Apache-2.0](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue.svg)](#license)
 
-**NMPL Core** is the standalone, lightweight packet loss detection and hop-localization engine powering the **No More Packet Loss** platform.
+**NMPL Core** is the free CLI engine for manual diagnostics and scripting. It provides adaptive loss detection and hop-localization analysis, while the Pro build adds the web dashboard, continuous monitoring, enrichment, and evidence exports.
 
-For the production-ready build featuring a web dashboard, ASN/RDAP network enrichment lookups, automated evidence exports, background monitoring, and pre-built Docker containers, visit **[getnmpl.com](https://www.getnmpl.com)**.
+For the production-ready build featuring a web dashboard, ASN/RDAP network enrichment lookups, automated evidence exports, background monitoring, and pre-built Docker containers, visit [getnmpl.com](https://getnmpl.com).
 
 It provides real-time packet loss detection, per-target adaptive baseline analysis, and automated `mtr` hop-by-hop bottleneck tracing.
 
@@ -12,9 +12,9 @@ It provides real-time packet loss detection, per-target adaptive baseline analys
 
 ## Key Features
 
-- **Adaptive Baseline Detection:** Learns a target's normal baseline over its first ~30 probes to prevent false alarms on naturally lossy or rate-limited links.
-- **Hop Localization:** Automatically runs traceroutes (`mtr`) on detected loss events to isolate specific dropped segments and path bottlenecks.
-- **Offline Resilient:** Core detection, latency tracking, and metric persistence run fully offline.
+- **Adaptive Baseline Detection:** Learns a target's normal baseline over its first ~30 probes to reduce false alarms on naturally lossy or rate-limited links.
+- **Hop Localization:** Runs `mtr` on detected loss events and analyzes downstream loss patterns to identify the earliest abnormal hop or segment.
+- **Offline-capable:** Core detection, latency tracking, and metric persistence run without third-party APIs.
 - **Zero External UI Dependencies:** Designed to be imported directly as a Python package or run via lightweight CLI scripts.
 
 ---
@@ -32,12 +32,13 @@ It provides real-time packet loss detection, per-target adaptive baseline analys
 ### Installation
 
 ```bash
-git clone [https://github.com/Devjosef/NMPL-core.git](https://github.com/Devjosef/NMPL-core.git)
+git clone https://github.com/Devjosef/NMPL-core.git
 cd NMPL-core
 ```
 
 ## Usage
-Run single-target or live monitoring probes directly using Python:
+
+Run a 30-probe diagnostic, live monitoring, or MTR analysis directly using Python:
 
 ```bash
 # Basic loss test
@@ -54,9 +55,17 @@ python3 -m core 8.8.8.8 --mtr --json=proof.json --csv=hops.csv
 ```
 
 ## Architecture & Detection Engine
-Each monitored target receives a dedicated, persistent Detector instance. It establishes an initial baseline over a warm-up window (~30 probes) to account for targets that naturally throttle ICMP traffic, preventing false positive alerts while maintaining absolute loss thresholds for severe outages.
+
+Each monitored target receives a dedicated, persistent Detector instance. It establishes an initial baseline over a warm-up window of ~30 probes to account for targets that naturally throttle ICMP traffic, preventing false positive alerts while maintaining absolute loss thresholds for severe outages.
+
+## Limitations
+
+- `mtr` is required for hop-level tracing.
+- Intermediate-hop loss is not always forwarding loss; NMPL evaluates downstream persistence.
+- Core does not include the Pro dashboard, ASN/RDAP enrichment, incident archive, or automated exports.
 
 ## License
+
 Dual-licensed under either:
 
 MIT License (LICENSE-MIT or http://opensource.org/licenses/MIT)
