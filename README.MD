@@ -4,7 +4,7 @@
 
 **NMPL Core** is the free CLI engine for manual diagnostics and scripting. It provides adaptive loss detection and hop-localization analysis, while the Pro build adds the web dashboard, continuous monitoring, enrichment, and evidence exports.
 
-![NMPL Terminal Demo](https://raw.githubusercontent.com/Devjosef/NMPL-core/main/demo.gif)
+<img src="https://raw.githubusercontent.com/Devjosef/NMPL-core/main/demo.gif" width="650" alt="NMPL Terminal Demo" />
 
 For the production-ready build featuring a web dashboard, ASN/RDAP network enrichment lookups, automated evidence exports, background monitoring, and pre-built Docker containers, visit [getnmpl.com](https://getnmpl.com).
 
