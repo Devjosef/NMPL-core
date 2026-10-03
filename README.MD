@@ -60,6 +60,14 @@ python3 -m core 8.8.8.8 --mtr --json=proof.json --csv=hops.csv
 
 Each monitored target receives a dedicated, persistent Detector instance. It establishes an initial baseline over a warm-up window of ~30 probes to account for targets that naturally throttle ICMP traffic, preventing false positive alerts while maintaining absolute loss thresholds for severe outages.
 
+## Roadmap & Community Driven Enhancements
+
+Based on ongoing feedback from network engineers, the following features are actively planned for upcoming releases:
+
+- **Paris Traceroute Integration:** Implement fixed UDP/TCP flow hashing to stabilize path mapping and prevent false hop deltas across Equal-Cost Multi-Path (ECMP) routes.
+- **Structured Alerting Pipelines:** Native Webhook / JSON streaming integration for automated alerting in monitoring stacks (Datadog, Grafana, PagerDuty).
+- **Pro Features (getnmpl.com):** Web dashboard, historical database baselining, ASN/RDAP enrichment, background daemon monitoring, and automated incident evidence exports.
+
 ## Limitations
 
 - `mtr` is required for hop-level tracing.
