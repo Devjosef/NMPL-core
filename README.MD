@@ -52,20 +52,27 @@ python3 -m core 8.8.8.8 --watch
 # Traceroute + bottleneck analysis
 python3 -m core 8.8.8.8 --mtr
 
+# Paris traceroute with a stable UDP flow
+python3 -m core 8.8.8.8 --paris
+
+# Live monitoring with asynchronous webhook alerts
+python3 -m core 8.8.8.8 --watch --webhook-url https://example.com/nmpl-alerts
+
 # Export raw hop data to JSON/CSV
 python3 -m core 8.8.8.8 --mtr --json=proof.json --csv=hops.csv
 ```
+
+Paris tracing uses raw IPv4 ICMP responses and may require elevated privileges.
 
 ## Architecture & Detection Engine
 
 Each monitored target receives a dedicated, persistent Detector instance. It establishes an initial baseline over a warm-up window of ~30 probes to account for targets that naturally throttle ICMP traffic, preventing false positive alerts while maintaining absolute loss thresholds for severe outages.
 
-## Roadmap & Community Driven Enhancements
+## Core Integrations & Pro Features
 
-Based on ongoing feedback from network engineers, the following features are actively planned for upcoming releases:
+- **Paris Traceroute (Core):** Fixed UDP flow identifiers stabilize path mapping across TTL probes and ECMP routes.
+- **Webhook Alerting (Core):** Monitoring alerts are sent as JSON asynchronously, with bounded retries.
 
-- **Paris Traceroute Integration:** Implement fixed UDP/TCP flow hashing to stabilize path mapping and prevent false hop deltas across Equal-Cost Multi-Path (ECMP) routes.
-- **Structured Alerting Pipelines:** Native Webhook / JSON streaming integration for automated alerting in monitoring stacks (Datadog, Grafana, PagerDuty).
 - **Pro Features (getnmpl.com):** Web dashboard, historical database baselining, ASN/RDAP enrichment, background daemon monitoring, and automated incident evidence exports.
 
 ## Limitations

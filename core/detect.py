@@ -1,7 +1,14 @@
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+import json
+import logging
 from statistics import mean, stdev
 import time
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 from .probes import icmp_probe, udp_probe
+
+logger = logging.getLogger("nmpl.diagnostics")
 
 DEVIATION_MULTIPLIER = 2.5
 MIN_DEVIATION_FLOOR = 0.08
@@ -10,9 +17,16 @@ ICMP_ABSOLUTE_CEILING = 0.5
 
 
 class Detector:
-    def __init__(self, baseline_window=30, recent_window=10):
+    def __init__(self, baseline_window=30, recent_window=10, webhook_url=None):
         self.baseline_window = baseline_window
         self.recent_window = recent_window
+        self.webhook_url = webhook_url
+        self._webhook_executor = (
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix="nmpl-webhook")
+            if webhook_url else None
+        )
+        self._state = "OK"
+        self._target = None
 
         self.start_time = time.time()
         self.icmp_successes = 0
@@ -34,6 +48,7 @@ class Detector:
         self.udp_std = None
 
     def probe(self, target):
+        self._target = target
         icmp_small_ok, icmp_small_latency = icmp_probe(target, 64)
         icmp_large_ok, icmp_large_latency = icmp_probe(target, 512)
 
@@ -97,6 +112,13 @@ class Detector:
             confidence = None
 
         self.currently_alerting = (confidence is not None)
+        state = "CRITICAL" if confidence == "confirmed" else (
+            "DEGRADED" if confidence == "suspected" else "OK"
+        )
+        if state != self._state:
+            self._state = state
+            if state != "OK":
+                self._dispatch_webhook(state, confidence, icmp_recent, udp_recent)
 
         udp_note = ""
         if self.udp_state == "filtered":
@@ -114,6 +136,48 @@ class Detector:
         rate_limit_note = " [ICMP rate-limited]" if icmp_rate_limited_now else ""
         return (f"OK ICMP: {icmp_recent*100:.1f}% (base {self.icmp_baseline*100:.1f}%){rate_limit_note} "
                 f"UDP: {udp_recent*100:.1f}% (base {self.udp_baseline*100:.1f}%){udp_note}")
+
+    def _dispatch_webhook(self, state, confidence, icmp_loss, udp_loss):
+        if self._webhook_executor is None:
+            return
+        payload = {
+            "target": self._target,
+            "state": state,
+            "confidence": confidence,
+            "timestamp": time.time(),
+            "metrics": {
+                "icmp_loss_pct": icmp_loss * 100.0,
+                "udp_loss_pct": udp_loss * 100.0,
+            },
+        }
+        self._webhook_executor.submit(self._deliver_webhook, payload)
+
+    def _deliver_webhook(self, payload):
+        body = json.dumps(payload).encode("utf-8")
+        request = Request(
+            self.webhook_url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        for attempt in range(3):
+            error_message = None
+            try:
+                with urlopen(request, timeout=5) as response:
+                    if 200 <= response.status < 300:
+                        return
+                    error_message = f"HTTP {response.status}"
+            except (URLError, TimeoutError, OSError, ValueError) as error:
+                error_message = str(error)
+
+            if attempt < 2:
+                time.sleep(0.5 * (2 ** attempt))
+            else:
+                logger.error(
+                    "Webhook delivery failed after 3 attempts for target %s: %s",
+                    payload["target"],
+                    error_message,
+                )
 
     @property
     def is_alert(self) -> bool:

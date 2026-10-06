@@ -4,7 +4,7 @@ import json
 import csv
 import sys
 from .detect import Detector
-from .mtr import run_mtr
+from .mtr import run_mtr, run_paris_trace
 from .analyzer import analyze_path
 
 def main_with_result(args_list=None):
@@ -15,6 +15,8 @@ def main_with_result(args_list=None):
     parser.add_argument("target", help="Target IP")
     parser.add_argument("--watch", action="store_true", help="Live monitoring")
     parser.add_argument("--mtr", action="store_true", help="per hop analysis")
+    parser.add_argument("--paris", action="store_true", help="Use Paris traceroute with a fixed UDP flow")
+    parser.add_argument("--webhook-url", type=str, help="Webhook endpoint URL for alert notifications")
     parser.add_argument("--interval", type=float, default=3.0)
     parser.add_argument("--json", help="Export JSON analysis")
     parser.add_argument("--csv", help="Export CSV hops")
@@ -34,8 +36,8 @@ def main_with_result(args_list=None):
         "metrics": {"loss_pct": 0.0, "latency_ms": 0.0, "jitter_ms": 0.0}
     }
     
-    if args.mtr:
-        hops = run_mtr(args.target)
+    if args.mtr or args.paris:
+        hops = run_paris_trace(args.target) if args.paris else run_mtr(args.target)
         result["hops"] = hops
         
         if hops:
@@ -88,7 +90,7 @@ def main_with_result(args_list=None):
         else:
             result["summary"] = f"No hops data for {args.target}"
     else:
-        d = Detector()
+        d = Detector(webhook_url=args.webhook_url)
         if args.watch:
             d.probe(args.target)
             result["summary"] = d.status()
@@ -109,20 +111,18 @@ def main_with_result(args_list=None):
 def main():
     args_list = sys.argv[1:]
     parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("target", help="Target IP")
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--interval", type=float, default=3.0)
+    parser.add_argument("--webhook-url", type=str)
     args, _ = parser.parse_known_args(args_list)
     
-    if args.watch and not any(arg in args_list for arg in ["--mtr", "--once"]):
-        parser_full = argparse.ArgumentParser()
-        parser_full.add_argument("target", help="Target IP")
-        full_args, _ = parser_full.parse_known_args(args_list)
-        
-        d = Detector()
-        print(f"Monitoring loss {full_args.target}...")
+    if args.watch and not any(arg in args_list for arg in ["--mtr", "--paris", "--once"]):
+        d = Detector(webhook_url=args.webhook_url)
+        print(f"Monitoring loss {args.target}...")
         try:
             while True:
-                d.probe(full_args.target)
+                d.probe(args.target)
                 print(f"\r{d.status()}", end="")
                 time.sleep(args.interval)
         except KeyboardInterrupt:

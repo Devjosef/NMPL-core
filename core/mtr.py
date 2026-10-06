@@ -1,8 +1,11 @@
 import subprocess
 import shutil
 import platform
+import socket
 import re
 import logging
+import struct
+import time
 from typing import List, Dict
 
 logger = logging.getLogger("nmpl.diagnostics")
@@ -117,3 +120,134 @@ def run_mtr(target: str, count: int = 10) -> List[Dict]:
     except FileNotFoundError:
         logger.error("MTR binary disappeared during execution context.")
         return []
+
+
+def _matching_icmp_response(packet: bytes, target_ip: str, source_port: int, dest_port: int):
+    if len(packet) < 20 or packet[0] >> 4 != 4:
+        return None
+
+    outer_header_length = (packet[0] & 0x0F) * 4
+    if outer_header_length < 20 or len(packet) < outer_header_length + 8 + 20:
+        return None
+
+    icmp_offset = outer_header_length
+    icmp_type, icmp_code = struct.unpack_from("!BB", packet, icmp_offset)
+    if icmp_type not in (3, 11):
+        return None
+
+    inner_offset = icmp_offset + 8
+    inner_header_length = (packet[inner_offset] & 0x0F) * 4
+    if (packet[inner_offset] >> 4 != 4 or inner_header_length < 20
+            or packet[inner_offset + 9] != socket.IPPROTO_UDP
+            or len(packet) < inner_offset + inner_header_length + 8):
+        return None
+
+    inner_destination = socket.inet_ntoa(packet[inner_offset + 16:inner_offset + 20])
+    udp_offset = inner_offset + inner_header_length
+    quoted_source_port, quoted_dest_port = struct.unpack_from("!HH", packet, udp_offset)
+    if (inner_destination != target_ip or quoted_source_port != source_port
+            or quoted_dest_port != dest_port):
+        return None
+
+    return icmp_type, icmp_code
+
+
+def run_paris_trace(
+    target: str,
+    max_hops: int = 30,
+    probes_per_hop: int = 3,
+    timeout: float = 1.0,
+) -> List[Dict]:
+    """Trace an IPv4 path while keeping the UDP flow tuple constant across TTLs."""
+    if max_hops < 1 or probes_per_hop < 1 or timeout <= 0:
+        raise ValueError("max_hops, probes_per_hop, and timeout must be positive")
+
+    try:
+        target_ip = socket.gethostbyname(target)
+    except OSError as error:
+        logger.error(f"Unable to resolve Paris traceroute target {target}: {error}")
+        return []
+
+    dest_port = 33434
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    icmp_sock = None
+    try:
+        udp_sock.bind(("", 0))
+        source_port = udp_sock.getsockname()[1]
+        icmp_sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+        hops = []
+
+        for hop_ttl in range(1, max_hops + 1):
+            responses = []
+            reached_target = False
+            for _ in range(probes_per_hop):
+                udp_sock.setsockopt(socket.SOL_IP, socket.IP_TTL, hop_ttl)
+                icmp_sock.setblocking(False)
+                while True:
+                    try:
+                        icmp_sock.recvfrom(512)
+                    except BlockingIOError:
+                        break
+                started = time.monotonic()
+                udp_sock.sendto(b"NMPL Paris traceroute", (target_ip, dest_port))
+                deadline = started + timeout
+
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    icmp_sock.settimeout(remaining)
+                    try:
+                        packet, (router_ip, _) = icmp_sock.recvfrom(512)
+                    except socket.timeout:
+                        break
+
+                    response = _matching_icmp_response(
+                        packet, target_ip, source_port, dest_port
+                    )
+                    if response is None:
+                        continue
+
+                    icmp_type, _ = response
+                    responses.append((router_ip, (time.monotonic() - started) * 1000.0))
+                    if router_ip == target_ip and icmp_type == 3:
+                        reached_target = True
+                    break
+
+            if responses:
+                latencies = [latency for _, latency in responses]
+                hop = {
+                    "hop": hop_ttl,
+                    "host": responses[-1][0],
+                    "loss": (probes_per_hop - len(responses)) * 100.0 / probes_per_hop,
+                    "sent": probes_per_hop,
+                    "last": latencies[-1],
+                    "avg": sum(latencies) / len(latencies),
+                    "best": min(latencies),
+                    "worst": max(latencies),
+                }
+            else:
+                hop = {
+                    "hop": hop_ttl,
+                    "host": "???",
+                    "loss": 100.0,
+                    "sent": probes_per_hop,
+                    "last": None,
+                    "avg": None,
+                    "best": None,
+                    "worst": None,
+                }
+            hops.append(hop)
+            if reached_target:
+                break
+
+        return hops
+    except OSError as error:
+        logger.error(
+            f"Paris traceroute failed for {target}; raw ICMP socket access may be required: {error}"
+        )
+        return []
+    finally:
+        udp_sock.close()
+        if icmp_sock is not None:
+            icmp_sock.close()
